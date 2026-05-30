@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "classiccounter",
     "public": "dist",
     "ignore": [
       "firebase.json",

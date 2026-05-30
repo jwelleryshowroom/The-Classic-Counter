@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, doc, setDoc, getDoc, getDocs, query, where, serverTimestamp, increment } from 'firebase/firestore';
 import { useToast } from './useToast';
+import { useAuth } from './useAuth';
 
 const CustomerContext = createContext();
 
@@ -11,12 +12,19 @@ export const CustomerProvider = ({ children }) => {
     const [customers, setCustomers] = useState({}); // Cache by Phone Number
     const [loading, setLoading] = useState(true);
     const { showToast } = useToast();
+    const { user, businessId } = useAuth();
 
     // 1. Initial Load (Build Cache)
     useEffect(() => {
         const fetchCustomers = async () => {
+            if (!user || !businessId) {
+                setCustomers({});
+                setLoading(false);
+                return;
+            }
+
             try {
-                const q = query(collection(db, 'customers'));
+                const q = collection(db, 'businesses', businessId, 'customers');
                 const snapshot = await getDocs(q);
 
                 const cache = {};
@@ -37,24 +45,25 @@ export const CustomerProvider = ({ children }) => {
         };
 
         fetchCustomers();
-    }, []);
+    }, [user, businessId]);
 
     // 2. Add or Update Customer (Called on Checkout)
     const addOrUpdateCustomer = async (transactionData) => {
         const { customer } = transactionData;
 
-        // Skip if no valid phone
-        if (!customer || !customer.phone || customer.phone.length !== 10) return;
+        // Skip if no valid phone or business ID
+        if (!customer || !customer.phone || customer.phone.length !== 10 || !businessId) return;
 
         const phone = customer.phone;
         const name = customer.name || 'Unknown';
-        const docRef = doc(db, 'customers', phone);
+        const docRef = doc(db, 'businesses', businessId, 'customers', phone);
 
         try {
             const exists = customers[phone];
 
             const updates = {
                 phone,
+                businessId,
                 name, // Always update name to latest used
                 lastVisit: serverTimestamp(),
                 visitCount: increment(1),

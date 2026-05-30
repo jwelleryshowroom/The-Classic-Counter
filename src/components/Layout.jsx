@@ -28,7 +28,7 @@ const Header = () => {
                     fontFamily: '"Playfair Display", serif',
                     letterSpacing: '-0.5px'
                 }}>
-                    The Classic Confection
+                    The Classic Counter
                 </h1>
                 <p style={{
                     color: 'var(--color-text-muted)',

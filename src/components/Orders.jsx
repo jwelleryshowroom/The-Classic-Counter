@@ -4,7 +4,7 @@ import { useTransactions } from '../context/useTransactions';
 import { useAuth } from '../context/useAuth';
 import AccessDeniedModal from './AccessDeniedModal';
 import { motion } from 'framer-motion';
-import { Clock, CheckCircle, Car, Phone, Printer, Search, Send, Package, LayoutGrid, List, Plus, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Clock, CheckCircle, Car, Phone, Printer, Search, Send, Package, LayoutGrid, List, Plus, ArrowUpDown, ArrowUp, ArrowDown, Utensils } from 'lucide-react';
 import ProfileMenu from './ProfileMenu';
 import { format, differenceInMinutes, isPast } from 'date-fns';
 import ReceiptPrinter from './ReceiptPrinter';
@@ -217,7 +217,7 @@ const Orders = () => {
                                     zIndex: 10
                                 }}>
                                     <tr>
-                                        <th style={{ padding: '20px', fontSize: '0.8rem', color: 'var(--color-text-secondary)', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase' }}>ORDER ID</th>
+                                        <th style={{ padding: '20px', fontSize: '0.8rem', color: 'var(--color-text-secondary)', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase' }}>AMOUNT</th>
                                         <th style={{ padding: '20px', fontSize: '0.8rem', color: 'var(--color-text-secondary)', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase' }}>CUSTOMER</th>
                                         <th style={{ padding: '20px', fontSize: '0.8rem', color: 'var(--color-text-secondary)', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase' }}>DELIVERY</th>
                                         <th style={{ padding: '20px', fontSize: '0.8rem', color: 'var(--color-text-secondary)', fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase' }}>ITEMS</th>
@@ -240,14 +240,26 @@ const Orders = () => {
                                             layout
                                             style={{ borderBottom: '1px solid var(--color-border)' }}
                                         >
-                                            <td style={{ padding: '16px', fontWeight: 600 }}>#{order.id.slice(-6).toUpperCase()}</td>
+                                            <td style={{ padding: '16px', fontWeight: 600 }}>
+                                                <div style={{ fontSize: '1.1rem', color: 'var(--color-text-primary)' }}>₹{order.totalValue}</div>
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>#{order.id.slice(-6).toUpperCase()}</div>
+                                            </td>
                                             <td style={{ padding: '16px' }}>
                                                 <div style={{ fontWeight: 600 }}>{order.customer?.name || "Walk-in"}</div>
                                                 <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{order.customer?.phone}</div>
                                             </td>
                                             <td style={{ padding: '16px' }}>
-                                                {/* State 1: Quick Sale -> "Instant Delivery" */}
-                                                {order.type === 'sale' ? (
+                                                {order.type === 'dine_in' ? (
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#E91E63', fontWeight: 600 }}>
+                                                            <Utensils size={14} />
+                                                            <span>Dine-In</span>
+                                                        </div>
+                                                        <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginLeft: '20px' }}>
+                                                            {format(new Date(order.date), 'dd MMM yyyy, hh:mm a')}
+                                                        </div>
+                                                    </div>
+                                                ) : order.type === 'sale' ? (
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--color-success)', fontWeight: 600 }}>
                                                             <CheckCircle size={14} />

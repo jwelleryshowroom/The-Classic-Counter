@@ -4,12 +4,21 @@ import { useAuth } from '../context/useAuth';
 import { useInstall } from '../context/useInstall';
 import { useSettings } from '../context/SettingsContext';
 import { Settings as SettingsIcon, Layout, Smartphone, ArrowLeft, MousePointer2, Eye, Smile, Type } from 'lucide-react';
+import MasterCategoryOrderManager from './settings/MasterCategoryOrderManager';
 
 const Settings = ({ onClose }) => {
     const { dashboardMode, setDashboardMode } = useTheme();
     const { role: _role } = useAuth();
     const { deferredPrompt, promptInstall, isIOS, isStandalone } = useInstall();
-    const { menuBarMode, setMenuBarMode, iconStyle, setIconStyle, showMenuLabels, setShowMenuLabels, homeLayoutMode, setHomeLayoutMode } = useSettings();
+    const { 
+        menuBarMode, setMenuBarMode, 
+        iconStyle, setIconStyle, 
+        showMenuLabels, setShowMenuLabels, 
+        homeLayoutMode, setHomeLayoutMode,
+        waiterTableCount, setWaiterTableCount,
+        masterCategoryOrder, setMasterCategoryOrder,
+        cashierName, setCashierName
+    } = useSettings();
 
     return (
         <div style={{ padding: '0 4px', height: '100%', overflowY: 'auto' }}>
@@ -69,7 +78,51 @@ const Settings = ({ onClose }) => {
                     </div>
                 </div>
 
-                <div style={{ marginBottom: '16px' }}>
+                {/* --- POS Customization Settings --- */}
+                <div style={{ marginBottom: '24px' }}>
+                    <label style={{ display: 'block', fontSize: '0.95rem', fontWeight: 600, marginBottom: '16px', color: 'var(--color-text-main)' }}>
+                        POS Configuration
+                    </label>
+
+                    {/* Cashier Name */}
+                    <div style={{ marginBottom: '16px', padding: '12px', background: 'var(--color-bg-secondary)', borderRadius: '12px', border: '1px solid var(--color-border)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-text-main)' }}>Default Cashier Name</div>
+                            <input 
+                                type="text" 
+                                value={cashierName} 
+                                onChange={(e) => setCashierName(e.target.value)}
+                                style={{ width: '150px', padding: '6px 10px', borderRadius: '8px', border: '1px solid var(--color-border)', background: 'var(--color-bg-surface)', color: 'var(--color-text-main)', textAlign: 'left' }}
+                            />
+                        </div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>This name will be printed on invoices/receipts as the Cashier.</div>
+                    </div>
+
+                    {/* Table Count */}
+                    <div style={{ marginBottom: '16px', padding: '12px', background: 'var(--color-bg-secondary)', borderRadius: '12px', border: '1px solid var(--color-border)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                            <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-text-main)' }}>Number of Tables</div>
+                            <input 
+                                type="number" 
+                                value={waiterTableCount} 
+                                onChange={(e) => setWaiterTableCount(Math.max(1, parseInt(e.target.value) || 1))}
+                                style={{ width: '60px', padding: '6px 10px', borderRadius: '8px', border: '1px solid var(--color-border)', background: 'var(--color-bg-surface)', color: 'var(--color-text-main)', textAlign: 'center' }}
+                            />
+                        </div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Default number of tables shown in the Waiter and Billing screens. Active tables will always be shown.</div>
+                    </div>
+
+                    {/* Master Category Order */}
+                    <div style={{ padding: '12px', background: 'var(--color-bg-secondary)', borderRadius: '12px', border: '1px solid var(--color-border)' }}>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-text-main)', marginBottom: '12px' }}>Master Category Order</div>
+                        <MasterCategoryOrderManager 
+                            masterCategoryOrder={masterCategoryOrder}
+                            setMasterCategoryOrder={setMasterCategoryOrder}
+                        />
+                    </div>
+                </div>
+
+                <div style={{ marginBottom: '16px', borderTop: '1px solid var(--color-border)', paddingTop: '24px' }}>
                     <label style={{ display: 'block', fontSize: '0.95rem', fontWeight: 600, marginBottom: '16px', color: 'var(--color-text-main)' }}>
                         Desktop Home Layout
                     </label>
@@ -427,7 +480,7 @@ const Settings = ({ onClose }) => {
 
             <div style={{ padding: '24px', textAlign: 'center', opacity: 0.3 }}>
                 <div style={{ fontSize: '0.8rem', fontWeight: 600 }}>TCC App v1.2.1</div>
-                <div style={{ fontSize: '0.7rem' }}>© 2026 The Classic Confection</div>
+                <div style={{ fontSize: '0.7rem' }}>© 2026 The Classic Counter</div>
             </div>
         </div>
     );

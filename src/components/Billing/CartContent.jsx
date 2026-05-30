@@ -247,7 +247,9 @@ const CartContent = ({
                 {/* Totals Section */}
                 <div style={{ marginBottom: isMobile ? '8px' : '16px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: isMobile ? '1.1rem' : '1.2rem', fontWeight: 700, marginBottom: '8px' }}>
-                        <span style={{ color: '#aaa' }}>Total</span>
+                        <span style={{ color: '#aaa', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '1.4rem', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))' }}>🧾</span> Total
+                        </span>
                         <span style={{ color: 'var(--color-text-main)' }}>₹{totalAmount}</span>
                     </div>
 

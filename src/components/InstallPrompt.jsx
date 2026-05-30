@@ -9,6 +9,7 @@ const InstallPrompt = () => {
     const [startOpen, setStartOpen] = useState(false); // Local state to control visibility
     const { theme } = useTheme();
     const { user } = useAuth();
+    const [imgLoaded, setImgLoaded] = useState(false);
     const isDark = theme === 'dark';
 
     // Show prompt automatically if available or if iOS (and not standalone)
@@ -85,16 +86,37 @@ const InstallPrompt = () => {
                 flexShrink: 0,
                 boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
                 border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.05)',
-                overflow: 'hidden'
+                overflow: 'hidden',
+                position: 'relative'
             }}>
+                {!imgLoaded && (
+                    <div style={{
+                        position: 'absolute',
+                        inset: 0,
+                        backgroundColor: '#8B4513',
+                        color: 'white',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: 'bold',
+                        fontSize: '0.8rem',
+                        letterSpacing: '0.5px'
+                    }}>
+                        TCC
+                    </div>
+                )}
                 <img
                     src={isDark ? "/logo-dark-transparent.png" : "/logo-light.png"}
                     alt="App Icon"
+                    onLoad={() => setImgLoaded(true)}
+                    onError={() => setImgLoaded(false)}
                     style={{
                         width: '100%',
                         height: '100%',
                         objectFit: 'cover',
-                        transform: 'scale(1.35)' /* Significant zoom to focus on "TCC" */
+                        transform: 'scale(1.35)',
+                        opacity: imgLoaded ? 1 : 0,
+                        transition: 'opacity 0.25s ease'
                     }}
                 />
             </div>

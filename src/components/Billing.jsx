@@ -2,15 +2,19 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTransactions } from '../context/useTransactions';
+import { useTableSessions } from '../context/useTableSessions';
+import { db } from '../firebase';
+import { doc, deleteDoc } from 'firebase/firestore';
 import { useInventory } from '../context/InventoryContext';
 import { useAuth } from '../context/useAuth';
 import { useToast } from '../context/useToast';
 import { useCustomers } from '../context/CustomerContext';
-import { ChevronRight, ChevronLeft, Trash2, AlertTriangle, Zap, Calendar } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Trash2, AlertTriangle, Zap, Calendar, Utensils } from 'lucide-react';
 import { format } from 'date-fns';
 import { useTheme } from '../context/useTheme';
 
 import { toTitleCase, getSmartEmoji } from '../utils/smartHelpers';
+import { formatTableName } from './shared/TableStatusCard';
 import { triggerHaptic } from '../utils/haptics';
 
 // --- Extracted Cart Component to fix Focus Issues ---
@@ -26,9 +30,10 @@ const Billing = () => {
     const { transactions, addTransaction } = useTransactions();
     const { theme, toggleTheme } = useTheme();
     const { items: allItems, addItem: addInventoryItem, updateItem } = useInventory();
-    const { user, role } = useAuth();
+    const { user, role, businessId } = useAuth();
     const { showToast, removeToast } = useToast();
     const { addOrUpdateCustomer, getCustomerByPhone } = useCustomers(); // [NEW] Context
+    const { sessions } = useTableSessions();
     const location = useLocation();
 
     // Mode State: 'quick' | 'order'
@@ -46,6 +51,30 @@ const Billing = () => {
     // Items now come from Context!
 
     const [searchTerm, setSearchTerm] = useState('');
+    const [selectedSession, setSelectedSession] = useState(null);
+
+    const handleSelectSession = (session) => {
+        if (selectedSession?.id === session.id) {
+             setSelectedSession(null);
+             setCart([]);
+             setCustomerDetails({ name: '', phone: '', note: '' });
+             return;
+        }
+        triggerHaptic('light');
+        setSelectedSession(session);
+        // Flatten KOT items into a single cart
+        const sessionItems = (session.kots || []).flatMap(kot => kot.items);
+        const groupedMap = new Map();
+        sessionItems.forEach(item => {
+             if (groupedMap.has(item.id)) {
+                 groupedMap.get(item.id).qty += item.qty;
+             } else {
+                 groupedMap.set(item.id, { ...item });
+             }
+        });
+        setCart(Array.from(groupedMap.values()));
+        setCustomerDetails(prev => ({ ...prev, name: formatTableName(session.tableId) }));
+    };
 
     // Quick Add Form State
     const [quickAddName, setQuickAddName] = useState('');
@@ -113,14 +142,28 @@ const Billing = () => {
         return saved ? JSON.parse(saved) : [];
     });
 
-    // Hydrate Cart from Navigation State (e.g. from Home Quick Sale)
+    // Hydrate Cart from Navigation State (e.g. from Home Quick Sale) or table selection
     useEffect(() => {
+        let cleared = false;
         if (location.state?.cart) {
             setCart(location.state.cart);
-            // Clear state to prevent re-adding on refresh
+            cleared = true;
+        }
+        if (location.state?.mode) {
+            setMode(location.state.mode);
+            cleared = true;
+        }
+        if (location.state?.sessionTableId && sessions.length > 0) {
+            const sess = sessions.find(s => s.tableId === location.state.sessionTableId);
+            if (sess) {
+                handleSelectSession(sess);
+            }
+            cleared = true;
+        }
+        if (cleared) {
             window.history.replaceState({}, document.title);
         }
-    }, [location]);
+    }, [location, sessions]);
 
     // [NEW] Auto-Save Cart
     useEffect(() => {
@@ -209,8 +252,8 @@ const Billing = () => {
         return allItems
             .filter(item => {
                 const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
-                const matchesCategory = filterCategory === 'All' || item.category === filterCategory;
-                return matchesSearch && matchesCategory;
+                // Grouped Layout: We no longer filter out categories, we show them all!
+                return matchesSearch;
             })
             .sort((a, b) => {
                 // 1. Popularity (Most Sold First - Irrespective of stock)
@@ -272,13 +315,16 @@ const Billing = () => {
         }
 
         const isOrder = mode === 'order';
+        const isDineIn = mode === 'dine-in';
 
         // [NEW] Smart Description Logic
         const itemNames = cart.map(i => i.name).join(', ');
         const itemCount = cart.length;
         let description = '';
 
-        if (!isOrder) {
+        if (isDineIn) {
+            description = `Dine-In Settlement for ${formatTableName(selectedSession?.tableId || 'Unknown')} (${itemNames})`;
+        } else if (!isOrder) {
             // Quick Mode
             description = `Quick Sale of ${itemCount} items (${itemNames})`;
         } else {
@@ -300,7 +346,7 @@ const Billing = () => {
         }
 
         return {
-            type: isOrder ? 'order' : 'sale',
+            type: isDineIn ? 'dine_in' : (isOrder ? 'order' : 'sale'),
             amount: isOrder ? advanceAmount : totalAmount, // Cash Basis: Only record what is paid NOW
             totalValue: totalAmount,
             // STRICT CLEANUP: Map items to plain objects to avoid "Invalid nested entity" errors
@@ -388,8 +434,14 @@ const Billing = () => {
             // 3. Save to DB (Background)
             const docRef = await addTransaction(data);
 
+            if (mode === 'dine-in' && selectedSession) {
+                if (!businessId) throw new Error("No business ID found. Cannot delete table session.");
+                await deleteDoc(doc(db, 'businesses', businessId, 'tableSessions', selectedSession.id));
+                setSelectedSession(null);
+            }
+
             // [NEW] Auto-Save Customer
-            if (data.customer) {
+            if (data.customer && mode === 'order') {
                 addOrUpdateCustomer(data);
             }
 
@@ -474,38 +526,122 @@ const Billing = () => {
                 setMode={setMode}
             />
 
+
+
             {/* MAIN CONTENT SPLIT */}
             <div className="layout-container" style={{ flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' }}>
 
-                {/* 2. LEFT SIDE: PRODUCT GRID */}
-                <ProductGrid
-                    searchTerm={searchTerm}
-                    setSearchTerm={setSearchTerm}
-                    categories={categories}
-                    filterCategory={filterCategory}
-                    setFilterCategory={setFilterCategory}
-                    filteredItems={filteredItems}
-                    cart={cart}
-                    addToCart={addToCart}
-                    updateQty={updateQty}
-                    isMobile={isMobile}
-                    setShowMobileSearch={setShowMobileSearch}
-                    // Quick Add Props
-                    quickAddName={quickAddName}
-                    setQuickAddName={setQuickAddName}
-                    quickAddPrice={quickAddPrice}
-                    setQuickAddPrice={setQuickAddPrice}
-                    quickAddCategory={quickAddCategory}
-                    setQuickAddCategory={setQuickAddCategory}
-                    quickAddStock={quickAddStock}
-                    setQuickAddStock={setQuickAddStock}
-                    quickAddTrackStock={quickAddTrackStock}
-                    setQuickAddTrackStock={setQuickAddTrackStock}
-                    quickAddImage={quickAddImage}
-                    setQuickAddImage={setQuickAddImage}
-                    suggestedEmoji={suggestedEmoji}
-                    handleQuickAddSubmit={handleQuickAddSubmit}
-                />
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100%' }}>
+                    {/* [NEW] MOBILE MODE SWITCHER */}
+                    {isMobile && (
+                        <div style={{ padding: '8px 16px', background: 'var(--color-bg-base)', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
+                            <div style={{ display: 'flex', background: 'var(--color-bg-secondary)', padding: '3px', borderRadius: '8px', width: '100%', maxWidth: '320px', border: '1px solid var(--color-border)' }}>
+                                <button
+                                    onClick={() => { triggerHaptic('light'); setMode('quick'); }}
+                                    style={{
+                                        flex: 1, border: 'none', borderRadius: '6px', padding: '6px 8px',
+                                        background: mode === 'quick' ? '#4CAF50' : 'transparent',
+                                        color: mode === 'quick' ? 'white' : 'var(--color-text-muted)',
+                                        fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px'
+                                    }}
+                                >
+                                    ⚡ Quick
+                                </button>
+                                <button
+                                    onClick={() => { triggerHaptic('light'); setMode('order'); }}
+                                    style={{
+                                        flex: 1, border: 'none', borderRadius: '6px', padding: '6px 8px',
+                                        background: mode === 'order' ? '#FF9800' : 'transparent',
+                                        color: mode === 'order' ? 'black' : 'var(--color-text-muted)',
+                                        fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px'
+                                    }}
+                                >
+                                    🧾 Order
+                                </button>
+                                <button
+                                    onClick={() => { triggerHaptic('light'); setMode('dine-in'); }}
+                                    style={{
+                                        flex: 1, border: 'none', borderRadius: '6px', padding: '6px 8px',
+                                        background: mode === 'dine-in' ? '#E91E63' : 'transparent',
+                                        color: mode === 'dine-in' ? 'white' : 'var(--color-text-muted)',
+                                        fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px'
+                                    }}
+                                >
+                                    🍽️ Dine In
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* [NEW] DINE-IN TABLE BAR (Moved inside left column) */}
+                    {mode === 'dine-in' && (
+                        <div style={{ padding: '12px 16px', background: 'var(--color-bg-base)', borderBottom: '1px solid var(--color-border)', display: 'flex', gap: '12px', overflowX: 'auto', alignItems: 'center' }} className="no-scrollbar">
+                            <div style={{ fontWeight: 800, fontSize: '0.8rem', letterSpacing: '0.5px', color: 'var(--color-text-muted)', textTransform: 'uppercase', marginRight: '8px' }}>Active Tables</div>
+                            {sessions.filter(s => s.status !== 'Available').length === 0 ? (
+                                <div style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', fontStyle: 'italic' }}>No active tables</div>
+                            ) : (
+                                sessions.filter(s => s.status !== 'Available').map(session => (
+                                    <button
+                                        key={session.id}
+                                        onClick={() => handleSelectSession(session)}
+                                        style={{
+                                            padding: '8px 20px', borderRadius: '12px',
+                                            border: `1px solid ${selectedSession?.id === session.id ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                                            background: selectedSession?.id === session.id ? 'var(--color-bg-glass-input)' : 'var(--color-bg-surface)',
+                                            color: selectedSession?.id === session.id ? 'var(--color-primary)' : 'var(--color-text-primary)',
+                                            display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer',
+                                            minWidth: 'fit-content',
+                                            boxShadow: selectedSession?.id === session.id ? '0 4px 12px rgba(0,0,0,0.05)' : 'none',
+                                            transform: selectedSession?.id === session.id ? 'scale(1.02)' : 'scale(1)',
+                                            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                                        }}
+                                    >
+                                        <div style={{ 
+                                            width: '8px', height: '8px', borderRadius: '50%', 
+                                            background: session.status === 'Billing Requested' ? 'var(--color-danger)' : 'var(--color-warning)',
+                                            boxShadow: session.status === 'Billing Requested' ? '0 0 8px var(--color-danger)' : 'none'
+                                        }} />
+                                        <span style={{ fontWeight: selectedSession?.id === session.id ? 800 : 600, fontSize: '0.95rem' }}>{formatTableName(session.tableId)}</span>
+                                        {session.status === 'Billing Requested' && <span style={{ fontSize: '0.7rem', background: 'var(--color-danger)', color: 'white', padding: '2px 8px', borderRadius: '6px', fontWeight: 700 }}>Bill Req</span>}
+                                    </button>
+                                ))
+                            )}
+                        </div>
+                    )}
+
+                    {/* 2. LEFT SIDE: PRODUCT GRID */}
+                    <ProductGrid
+                        searchTerm={searchTerm}
+                        setSearchTerm={setSearchTerm}
+                        categories={categories}
+                        filterCategory={filterCategory}
+                        setFilterCategory={setFilterCategory}
+                        filteredItems={filteredItems}
+                        cart={cart}
+                        addToCart={addToCart}
+                        updateQty={updateQty}
+                        isMobile={isMobile}
+                        setShowMobileSearch={setShowMobileSearch}
+                        // Quick Add Props
+                        quickAddName={quickAddName}
+                        setQuickAddName={setQuickAddName}
+                        quickAddPrice={quickAddPrice}
+                        setQuickAddPrice={setQuickAddPrice}
+                        quickAddCategory={quickAddCategory}
+                        setQuickAddCategory={setQuickAddCategory}
+                        quickAddStock={quickAddStock}
+                        setQuickAddStock={setQuickAddStock}
+                        quickAddTrackStock={quickAddTrackStock}
+                        setQuickAddTrackStock={setQuickAddTrackStock}
+                        quickAddImage={quickAddImage}
+                        setQuickAddImage={setQuickAddImage}
+                        suggestedEmoji={suggestedEmoji}
+                        handleQuickAddSubmit={handleQuickAddSubmit}
+                    />
+                </div>
 
                 {/* 3. RIGHT SIDE: CART (Desktop Only) */}
                 {!isMobile && (
@@ -564,7 +700,7 @@ const Billing = () => {
             {
                 showMobileCart && (
                     <div style={{
-                        position: 'fixed', inset: 0, zIndex: 10001,
+                        position: 'fixed', inset: 0, zIndex: 20000,
                         background: 'var(--color-bg-surface)',
                         display: 'flex', flexDirection: 'column',
                         animation: 'slideUp 0.3s ease-out'
@@ -610,13 +746,13 @@ const Billing = () => {
                             )}
 
                             {/* [NEW] Mobile Mode Toggle */}
-                            <div style={{ display: 'flex', background: 'var(--color-bg-secondary)', borderRadius: '8px', padding: '3px', marginLeft: '12px' }}>
+                            <div style={{ display: 'flex', background: 'var(--color-bg-secondary)', borderRadius: '8px', padding: '3px', marginLeft: '12px', border: '1px solid var(--color-border)' }}>
                                 <button
                                     onClick={() => { triggerHaptic('light'); setMode('quick'); }}
                                     style={{
                                         border: 'none', borderRadius: '6px', padding: '8px 10px',
                                         background: mode === 'quick' ? 'var(--color-bg-surface)' : 'transparent',
-                                        color: mode === 'quick' ? '#E91E63' : 'var(--color-text-muted)',
+                                        color: mode === 'quick' ? '#4CAF50' : 'var(--color-text-muted)',
                                         boxShadow: mode === 'quick' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
                                         display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer'
                                     }}
@@ -628,12 +764,24 @@ const Billing = () => {
                                     style={{
                                         border: 'none', borderRadius: '6px', padding: '8px 10px',
                                         background: mode === 'order' ? 'var(--color-bg-surface)' : 'transparent',
-                                        color: mode === 'order' ? '#2196F3' : 'var(--color-text-muted)',
+                                        color: mode === 'order' ? '#FF9800' : 'var(--color-text-muted)',
                                         boxShadow: mode === 'order' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
                                         display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer'
                                     }}
                                 >
                                     <Calendar size={18} />
+                                </button>
+                                <button
+                                    onClick={() => { triggerHaptic('light'); setMode('dine-in'); }}
+                                    style={{
+                                        border: 'none', borderRadius: '6px', padding: '8px 10px',
+                                        background: mode === 'dine-in' ? 'var(--color-bg-surface)' : 'transparent',
+                                        color: mode === 'dine-in' ? '#E91E63' : 'var(--color-text-muted)',
+                                        boxShadow: mode === 'dine-in' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                                        display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer'
+                                    }}
+                                >
+                                    <Utensils size={18} />
                                 </button>
                             </div>
 
@@ -728,40 +876,22 @@ const Billing = () => {
                     .cart-pane { display: none; } /* Hide Sidebar Cart */
                     
                     /* Adjust Main Padding for Mobile */
-                    .menu-pane > div:last-child { padding: 10px !important; padding-bottom: 100px !important; }
+                    .menu-pane > div:last-child { padding: 6px 4px !important; padding-bottom: 100px !important; }
 
-                    /* Compact Grid for Mobile - 4 Items Row */
+                    /* Compact Grid for Mobile - 2 Items Row */
                     .product-grid { 
-                        grid-template-columns: repeat(4, 1fr) !important; 
+                        grid-template-columns: repeat(2, 1fr) !important; 
                         gap: 8px !important; 
                     }
                     /* Compact Card Styling for Mobile */
                     .item-card {
-                        padding: 6px !important;
-                        min-height: 100px !important;
-                        min-width: 0 !important; /* CRITICAL: Allows grid item to shrink below content size */
-                        box-shadow: none !important; 
-                        background: rgba(255,255,255,0.05) !important; /* Lighter background for less clutter */
+                        padding: 0 !important;
+                        min-height: 155px !important;
+                        height: auto !important;
+                        min-width: 0 !important;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.03) !important;
+                        overflow: hidden !important;
                     }
-                    .item-card img { height: 100% !important; }
-                    .item-card > div:first-child { height: 50px !important; margin-bottom: 4px !important; margin-top: 0 !important; } /* Improved Image Visibility */
-                    .item-card > div:nth-child(3) { 
-                        font-size: 0.65rem !important; 
-                        line-height: 1 !important; 
-                        white-space: nowrap; 
-                        overflow: hidden; 
-                        text-overflow: ellipsis; 
-                        width: 100%; 
-                        text-align: center !important;
-                    } /* Name */
-                    .item-card > div:last-child { 
-                        flex-direction: column; 
-                        align-items: center !important; 
-                        gap: 1px; 
-                        width: 100%;
-                    } /* Price & Stock Stacked */
-                    .item-card > div:last-child > div:first-child { font-size: 0.75rem !important; } /* Price */
-                    .item-card > div:last-child > div:last-child { display: none !important; } /* Hide Stock on tiny cards to save space, or make very small */
 
 
                     .header h2 { font-size: 1rem; }

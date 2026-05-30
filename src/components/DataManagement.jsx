@@ -1,11 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { useTransactions } from '../context/useTransactions';
+import { useTableSessions } from '../context/useTableSessions';
 import { useAuth } from '../context/useAuth';
 import { format, parseISO, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, getISOWeek, getYear } from 'date-fns';
 import { Trash2, AlertTriangle, Calendar, ChevronRight, ChevronDown, CheckCircle2, ShieldAlert, ArrowLeft } from 'lucide-react';
 
 const DataManagement = ({ onClose }) => {
     const { transactions, deleteTransactionsByDateRange, clearAllTransactions } = useTransactions();
+    const { clearAllSessions } = useTableSessions();
     const { role } = useAuth();
     const [confirmModal, setConfirmModal] = useState({ show: false, range: null, title: '', message: '' });
     const [loading, setLoading] = useState(false);
@@ -81,11 +83,31 @@ const DataManagement = ({ onClose }) => {
         });
     };
 
+    const handleClearSessions = () => {
+        if (role !== 'admin') {
+            setConfirmModal({
+                show: true,
+                isAccessDenied: true,
+                title: 'Access Denied',
+                message: 'Only Administrators can clear active sessions.'
+            });
+            return;
+        }
+        setConfirmModal({
+            show: true,
+            range: 'sessions',
+            title: 'Close All Sessions?',
+            message: 'This will forcefully close all active table sessions. Any unsaved data in those sessions will be lost.'
+        });
+    };
+
     const confirmDelete = async () => {
         setLoading(true);
         try {
             if (confirmModal.range === 'all') {
                 await clearAllTransactions();
+            } else if (confirmModal.range === 'sessions') {
+                await clearAllSessions();
             } else {
                 await deleteTransactionsByDateRange(
                     confirmModal.range.start.toISOString(),
@@ -293,6 +315,27 @@ const DataManagement = ({ onClose }) => {
                         }}
                     >
                         <Trash2 size={18} /> Reset Entire Database
+                    </button>
+
+                    <button
+                        onClick={handleClearSessions}
+                        style={{
+                            color: 'var(--color-danger)',
+                            backgroundColor: 'transparent',
+                            border: '1px solid var(--color-danger)',
+                            padding: '12px 24px',
+                            borderRadius: '12px',
+                            fontSize: '0.9rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            transition: 'all 0.3s',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            marginTop: '12px'
+                        }}
+                    >
+                        <Trash2 size={18} /> Close All Active Table Sessions
                     </button>
                 </div>
             )}

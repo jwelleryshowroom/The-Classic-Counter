@@ -15,7 +15,7 @@ export const generateInvoicePDF = (transaction) => {
     // --- Header ---
     doc.setFontSize(18);
     doc.setFont('helvetica', 'bold');
-    doc.text('THE CLASSIC CONFECTION', 105, 20, { align: 'center' });
+    doc.text('THE CLASSIC COUNTER', 105, 20, { align: 'center' });
 
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
@@ -105,7 +105,7 @@ export const generateInvoicePDF = (transaction) => {
     // --- Footer Notes ---
     doc.setFont('helvetica', 'italic');
     doc.setFontSize(9);
-    doc.text('Thank you for choosing The Classic Confection!', 105, finalY + 30, { align: 'center' });
+    doc.text('Thank you for choosing The Classic Counter!', 105, finalY + 30, { align: 'center' });
     
     return doc;
 };

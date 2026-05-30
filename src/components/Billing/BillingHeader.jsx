@@ -130,12 +130,12 @@ const BillingHeader = ({
                                         padding: '6px 16px', borderRadius: '6px',
                                         background: mode === 'quick' ? '#4CAF50' : 'transparent',
                                         color: mode === 'quick' ? 'white' : 'var(--color-text-muted)',
-                                        fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px',
+                                        fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px',
                                         border: 'none', cursor: 'pointer', fontSize: '0.85rem',
                                         transition: 'all 0.2s'
                                     }}
                                 >
-                                    <ShoppingBagIcon /> <span>QUICK</span>
+                                    <span style={{ fontSize: '1.1rem' }}>⚡</span> <span>QUICK</span>
                                 </button>
                                 <div style={{ width: '1px', background: 'var(--color-border)', margin: '4px 0' }}></div>
                                 <button
@@ -144,12 +144,26 @@ const BillingHeader = ({
                                         padding: '6px 16px', borderRadius: '6px',
                                         background: mode === 'order' ? '#FF9800' : 'transparent',
                                         color: mode === 'order' ? 'black' : 'var(--color-text-muted)',
-                                        fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px',
+                                        fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px',
                                         border: 'none', cursor: 'pointer', fontSize: '0.85rem',
                                         transition: 'all 0.2s'
                                     }}
                                 >
-                                    <ClipboardIcon /> <span>ORDER</span>
+                                    <span style={{ fontSize: '1.1rem' }}>🧾</span> <span>ORDER</span>
+                                </button>
+                                <div style={{ width: '1px', background: 'var(--color-border)', margin: '4px 0' }}></div>
+                                <button
+                                    onClick={() => { triggerHaptic('light'); setMode('dine-in'); }}
+                                    style={{
+                                        padding: '6px 16px', borderRadius: '6px',
+                                        background: mode === 'dine-in' ? '#E91E63' : 'transparent',
+                                        color: mode === 'dine-in' ? 'white' : 'var(--color-text-muted)',
+                                        fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px',
+                                        border: 'none', cursor: 'pointer', fontSize: '0.85rem',
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    <span style={{ fontSize: '1.1rem' }}>🍽️</span> <span>DINE IN</span>
                                 </button>
                             </div>
                         )}

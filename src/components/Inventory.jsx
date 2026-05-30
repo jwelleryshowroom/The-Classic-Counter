@@ -17,7 +17,7 @@ import { useInventoryFilters } from '../features/inventory/hooks/useInventoryFil
 import { useInventoryActions } from '../features/inventory/hooks/useInventoryActions';
 
 const Inventory = () => {
-    const { items, loading } = useInventory();
+    const { items, loading, updateItem } = useInventory();
     const { role } = useAuth(); // retained for any potential top-level role logic not in sub-components
     const [isBulkEditOpen, setIsBulkEditOpen] = useState(false); // [NEW]
 
@@ -39,6 +39,17 @@ const Inventory = () => {
         categories,
         filteredItems
     } = useInventoryFilters(items);
+
+    const masterCategories = useMemo(() => {
+        const map = new Map();
+        items.forEach(i => {
+            const name = (i.masterCategory || i.category || 'General').trim();
+            if (name) {
+                map.set(name.toLowerCase(), name);
+            }
+        });
+        return Array.from(map.values());
+    }, [items]);
 
     // --- Helpers / Variants ---
     const containerVariants = useMemo(() => ({
@@ -98,6 +109,11 @@ const Inventory = () => {
         updateVariantSplit,
         addSmartVariant
     } = useInventoryActions();
+
+    const handleToggleAvailability = (item) => {
+        const currentAvailability = item.isAvailable !== false; // defaults to true
+        updateItem(item.id, { isAvailable: !currentAvailability });
+    };
 
     return (
         <div className="no-scrollbar" style={{
@@ -195,6 +211,7 @@ const Inventory = () => {
                                     onEdit={handleEditClick}
                                     onDelete={handleDeleteClick}
                                     onQuickImageEdit={handleQuickImageEdit}
+                                    onToggleAvailability={() => handleToggleAvailability(item)}
                                 />
                             ))
                         ) : (
@@ -257,6 +274,11 @@ const Inventory = () => {
                 updateVariantSplit={updateVariantSplit}
                 addSmartVariant={addSmartVariant}
                 categories={categories}
+                masterCategories={masterCategories}
+                onDelete={() => {
+                    setIsModalOpen(false);
+                    handleDeleteClick(currentItem);
+                }}
             />
 
             <BulkImportModal

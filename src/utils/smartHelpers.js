@@ -60,7 +60,7 @@ export const getSmartEmoji = (name, category) => {
 };
 
 export const generateWhatsAppLink = (order) => {
-    const link = `${window.location.origin}/view/${order.id}`;
+    const link = `${window.location.origin}/view/${order.id}?biz=${order.businessId || ''}`;
     const phone = order.customer?.phone || '';
 
     // Distinction Logic
@@ -69,7 +69,7 @@ export const generateWhatsAppLink = (order) => {
     const closeMsg = isBooking ? 'Order is subject to confirmation.' : 'Please visit us again! 🙏';
 
     // Message Construction (Safe Emojis)
-    const message = `*THE CLASSIC CONFECTION* 🧁\n` +
+    const message = `*THE CLASSIC COUNTER* 🛍️\n` +
         `Hello *${order.customer?.name || 'Customer'}*,\n` +
         `Here is your ${docType} for Order *#${order.id.slice(-6).toUpperCase()}*:\n` +
         `${link}\n\n` +

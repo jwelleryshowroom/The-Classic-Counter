@@ -3,10 +3,11 @@ service cloud.firestore {
   match /databases/{database}/documents {
     
     // =================================================================
-    // 🛡️ SECURITY MODEL v2: Operational Staff
-    // 1. GUEST (Not in DB): Blocked completely.
-    // 2. STAFF (In DB): Can View AND Operate (Add/Delete Sales).
-    // 3. ADMIN (In DB + role='admin'): Can Manage Users.
+    // 🛡️ SECURITY MODEL: The Classic Counter Multi-Tenant Platform
+    // 1. SUPER ADMIN (msdhrsah@gmail.com): Full access.
+    // 2. OWNER/ADMIN (role='admin'): Access to own business and managing team.
+    // 3. STAFF (role='staff'): Access to business transactions, inventory, etc.
+    // 4. GUEST (role='guest'): Read-only access to inventory.
     // =================================================================
     
     // -----------------------------------------------------------------
@@ -21,19 +22,52 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/authorized_users/$(request.auth.token.email));
     }
 
-    // IS STAFF? (Anyone in the authorized list is considered Staff)
-    function isStaff() {
-      return isAuthenticated() && exists(/databases/$(database)/documents/authorized_users/$(request.auth.token.email));
+    function isSuperAdmin() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/system_admins/$(request.auth.token.email));
     }
 
-    // IS ADMIN? (Must have specific role)
+    function userExists() {
+      return exists(/databases/$(database)/documents/authorized_users/$(request.auth.token.email));
+    }
+
+    // IS STAFF? (Must have role admin or staff)
+    function isStaff() {
+      return isAuthenticated() && 
+             (isSuperAdmin() || 
+              (userExists() && getUserDoc().data.role in ['admin', 'staff']));
+    }
+
+    // IS ADMIN? (Must have role admin/owner)
     function isAdmin() {
-      return isStaff() && getUserDoc().data.role == 'admin';
+      return isSuperAdmin() || 
+             (isAuthenticated() && 
+              userExists() && getUserDoc().data.role == 'admin');
+    }
+
+    // GET BUSINESS ID
+    function getBusinessId() {
+      return getUserDoc().data.businessId;
+    }
+
+    // IS STAFF OF BUSINESS?
+    function isStaffOf(businessId) {
+      return isAuthenticated() && 
+             (isSuperAdmin() || 
+              (userExists() && getBusinessId() == businessId && getUserDoc().data.role in ['admin', 'staff']));
+    }
+
+    // IS ADMIN OF BUSINESS?
+    function isAdminOf(businessId) {
+      return isSuperAdmin() || 
+             (isAuthenticated() && 
+              userExists() && 
+              getBusinessId() == businessId && 
+              getUserDoc().data.role == 'admin');
     }
     
     function isValidTransaction() {
       return request.resource.data.amount is number
-             && request.resource.data.type in ['sale', 'expense', 'order']
+             && request.resource.data.type in ['sale', 'expense', 'order', 'dine_in']
              && request.resource.data.description is string;
     }
 
@@ -41,45 +75,88 @@ service cloud.firestore {
     // COLLECTION RULES
     // -----------------------------------------------------------------
 
+    // 0. System Administrators List (Database-driven Super Admins)
+    match /system_admins/{email} {
+      allow read: if isAuthenticated();
+      // Bootstrapping: msdhrsah@gmail.com can create/write their own document once; afterwards, only existing super admins can write
+      allow write: if isSuperAdmin() || (isAuthenticated() && request.auth.token.email == 'msdhrsah@gmail.com' && email == 'msdhrsah@gmail.com');
+    }
+
     // 1. Authorized Users List
     match /authorized_users/{email} {
-      // Users can see their own entry
-      allow read: if isAuthenticated() && request.auth.token.email == email;
+      allow read: if isAuthenticated() && 
+                  (request.auth.token.email == email || 
+                   isSuperAdmin() || 
+                   (userExists() && getBusinessId() != null && resource.data.businessId == getBusinessId()));
       
-      // ONLY Admins can manage the staff list
-      allow write: if isAdmin();
+      allow write: if isSuperAdmin() || 
+                   (isAdmin() && 
+                    getBusinessId() != null && 
+                    (resource == null || resource.data.businessId == getBusinessId()) && 
+                    (request.resource == null || request.resource.data.businessId == getBusinessId()));
     }
 
-    // 2. Transactions (Sales & Expenses)
-    match /transactions/{transactionId} {
-      // 🟢 PUBLIC ACCESS: Anyone can view a single invoice (for sharing)
-      allow get: if true;
-
-      // 🔒 STAFF ONLY: List (Search), Create, Delete
-      allow list, create, delete: if isStaff();
-      
-      // Update check still validates data
-      allow update: if isStaff() && isValidTransaction();
-    }
-    
-    // 3. Inventory Items (Menu)
-    match /inventory_items/{itemId} {
-      // 📖 READ: Authenticated users (Guests, Staff, Admin) can see the menu
-      allow read: if isAuthenticated();
-      
-      // 🔒 WRITE: Only Staff and Admins can Add/Edit/Delete
-      allow write: if isStaff();
+    // 2. Business Onboarding Applications
+    match /business_applications/{email} {
+      allow read, write: if isAuthenticated() && (request.auth.token.email == email || isSuperAdmin());
     }
 
-    // 4. Customers Directory (CRM)
-    match /customers/{phone} {
-      allow read, write: if isStaff();
+    // 3. Businesses Directory & Subcollections
+    match /businesses/{businessId} {
+      allow read: if isAuthenticated() && (isSuperAdmin() || (userExists() && getBusinessId() == businessId));
+      allow write: if isSuperAdmin();
+
+      // Nested Subcollections
+      match /transactions/{transactionId} {
+        // 🟢 PUBLIC ACCESS: Anyone can view a single invoice (for sharing)
+        allow get: if true;
+
+        allow list, create, delete: if isStaffOf(businessId);
+        allow update: if isStaffOf(businessId) && isValidTransaction();
+      }
+
+      match /inventory_items/{itemId} {
+        allow read: if isAuthenticated() && (isSuperAdmin() || (userExists() && getBusinessId() == businessId));
+        allow write: if isStaffOf(businessId);
+      }
+
+      match /customers/{phone} {
+        allow read, write: if isStaffOf(businessId);
+      }
+
+      match /tableSessions/{sessionId} {
+        allow read, write: if isStaffOf(businessId);
+      }
+
+      match /settings/{settingId} {
+        allow read: if isAuthenticated() && (isSuperAdmin() || (userExists() && getBusinessId() == businessId));
+        allow write: if isStaffOf(businessId);
+      }
     }
 
-    // 5. Error Logs (Automatic Reporting)
+    // 7. Error Logs (Automatic Reporting)
     match /error_logs/{logId} {
-      allow create: if isStaff();
-      allow read, update, delete: if isAdmin();
+      allow create: if isAuthenticated();
+      allow read, update, delete: if isSuperAdmin();
+    }
+
+    // =================================================================
+    // ⚠️ LEGACY ROOT-LEVEL FLAT COLLECTIONS (For Admin / Migration Only)
+    // =================================================================
+    match /transactions/{transactionId} {
+      allow read, write: if isSuperAdmin();
+    }
+    match /inventory_items/{itemId} {
+      allow read, write: if isSuperAdmin();
+    }
+    match /customers/{phone_business} {
+      allow read, write: if isSuperAdmin();
+    }
+    match /tableSessions/{sessionId} {
+      allow read, write: if isSuperAdmin();
+    }
+    match /settings/{settingId} {
+      allow read, write: if isSuperAdmin();
     }
     
   }

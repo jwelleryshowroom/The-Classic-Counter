@@ -66,7 +66,7 @@ const Login = () => {
                         lineHeight: 1.2,
                         marginBottom: '8px'
                     }}>
-                        The Classic<br />Confection
+                        The Classic<br />Counter
                     </div>
                     <div style={{
                         color: isDark ? '#A0A0A0' : '#8c7e72',

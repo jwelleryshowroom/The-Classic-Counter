@@ -81,7 +81,7 @@ const Analytics = ({ setCurrentView }) => {
         filteredTransactions.forEach(t => {
             const dateKey = format(new Date(t.date), 'dd/MM');
             if (!groups[dateKey]) groups[dateKey] = { name: dateKey, sales: 0, expense: 0 };
-            if (t.type === 'sale' || t.type === 'order' || t.type === 'settlement') groups[dateKey].sales += t.amount;
+            if (t.type === 'sale' || t.type === 'order' || t.type === 'settlement' || t.type === 'dine_in') groups[dateKey].sales += t.amount;
             else if (t.type === 'expense') groups[dateKey].expense += t.amount;
         });
         return Object.values(groups).reverse();
@@ -95,7 +95,7 @@ const Analytics = ({ setCurrentView }) => {
             sales: 0
         }));
 
-        filteredTransactions.filter(t => t.type === 'sale' || t.type === 'order').forEach(t => {
+        filteredTransactions.filter(t => t.type === 'sale' || t.type === 'order' || t.type === 'dine_in').forEach(t => {
             const hour = new Date(t.date).getHours();
             hours[hour].sales += t.amount;
         });
@@ -106,7 +106,7 @@ const Analytics = ({ setCurrentView }) => {
     // 3. Top 5 Items Sold
     const topItemsData = useMemo(() => {
         const items = {};
-        filteredTransactions.filter(t => t.type === 'sale' || t.type === 'order').forEach(t => {
+        filteredTransactions.filter(t => t.type === 'sale' || t.type === 'order' || t.type === 'dine_in').forEach(t => {
             if (t.items && Array.isArray(t.items)) {
                 t.items.forEach(item => {
                     const name = item.name || 'Unknown';
@@ -140,7 +140,7 @@ const Analytics = ({ setCurrentView }) => {
         let sales = 0;
         let expense = 0;
         filteredTransactions.forEach(t => {
-            if (t.type === 'sale' || t.type === 'order' || t.type === 'settlement') sales += t.amount;
+            if (t.type === 'sale' || t.type === 'order' || t.type === 'settlement' || t.type === 'dine_in') sales += t.amount;
             else if (t.type === 'expense') expense += t.amount;
         });
         return [

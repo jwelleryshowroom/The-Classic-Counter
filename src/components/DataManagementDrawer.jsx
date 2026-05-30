@@ -119,7 +119,7 @@ const DataManagementDrawer = () => {
     if (!isDataOpen) return null;
 
     return (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', justifyContent: 'flex-end' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 20000, display: 'flex', justifyContent: 'flex-end' }}>
             {/* Backdrop */}
             <div
                 onClick={closeData}

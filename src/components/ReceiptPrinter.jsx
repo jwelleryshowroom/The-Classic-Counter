@@ -1,9 +1,23 @@
 import React from 'react';
 import { format } from 'date-fns';
 import { Printer, Share2 } from 'lucide-react';
+import { useSettings } from '../context/SettingsContext';
 
 const ReceiptPrinter = ({ transaction, type = 'TAX_INVOICE' }) => {
     const isBooking = type === 'ORDER_BOOKING';
+
+    // Business Info from Settings (with fallback to originals)
+    const { businessInfo, cashierName } = useSettings();
+    const bizName = (businessInfo?.businessName && businessInfo.businessName !== 'e.g. +91 98765 43210')
+        ? businessInfo.businessName.toUpperCase()
+        : 'THE CLASSIC COUNTER';
+    const bizAddress = (businessInfo?.businessAddress && businessInfo.businessAddress !== 'e.g. 123 Main St...')
+        ? businessInfo.businessAddress
+        : 'Mahavir Marg, opp. Hotel Shyam Palace\nGandhi Chowk, Kishanganj, Bihar 855108';
+    const bizPhone = (businessInfo?.businessPhone && businessInfo.businessPhone !== 'e.g. +91 98765 43210')
+        ? businessInfo.businessPhone
+        : '+91-8294556416';
+    const bizFooter = businessInfo?.businessFooter || 'Thank you for visiting!';
 
     // Formatting Helpers
     const formatCurrency = (amount) => Number(amount).toFixed(2);
@@ -13,15 +27,16 @@ const ReceiptPrinter = ({ transaction, type = 'TAX_INVOICE' }) => {
     const padRight = (str, len) => str.padEnd(len, ' ').slice(0, len);
     const padLeft = (str, len) => str.padStart(len, ' ').slice(-len);
 
-    // The separator line
-    const SEPARATOR = '---------------------------------------';
+    // The separator line (using CSS dashed border to guarantee it spans exactly 100% of the page width without wrapping)
+    const SEPARATOR = <div style={{ borderTop: '1.2px dashed #000000', margin: '4px 0', width: '100%', height: 0 }} />;
 
     const Header = () => (
         <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '16px', fontWeight: 'bold' }}>THE CLASSIC CONFECTION</div>
-            <div style={{ fontSize: '11px' }}>Mahavir Marg, opp. Hotel Shyam Palace</div>
-            <div style={{ fontSize: '11px' }}>Gandhi Chowk, Kishanganj, Bihar 855108</div>
-            <div style={{ fontSize: '12px', marginTop: '2px' }}>Ph: +91-8294556416</div>
+            <div style={{ fontSize: '15px', fontWeight: 'bold' }}>{bizName}</div>
+            {bizAddress.split('\n').map((line, i) => (
+                <div key={i} style={{ fontSize: '11px' }}>{line}</div>
+            ))}
+            <div style={{ fontSize: '11px', marginTop: '2px' }}>Ph: {bizPhone}</div>
         </div>
     );
 
@@ -30,14 +45,14 @@ const ReceiptPrinter = ({ transaction, type = 'TAX_INVOICE' }) => {
         width: '100%', // Let parent control width
         maxWidth: '80mm',
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-        fontSize: '12px',
+        fontSize: '11px', // Reduced from 12px to prevent wrapping
         lineHeight: '1.2',
         color: 'black',
         background: 'white',
         padding: '10px',
         whiteSpace: 'pre-wrap',
         margin: '0 auto',
-        // Shadow is now handled by the parent wrapper in PublicInvoice
+        boxSizing: 'border-box',
         boxShadow: 'none'
     };
 
@@ -47,20 +62,37 @@ const ReceiptPrinter = ({ transaction, type = 'TAX_INVOICE' }) => {
             @page { size: auto; margin: 0mm; }
             body { 
                 visibility: hidden; 
-                overflow: hidden; 
+                overflow: visible !important; 
             }
+
+            /* 🚨 CRITICAL: Break out of Framer Motion / Flexbox centering traps */
+            .modal-overlay, .modal-content {
+                transform: none !important;
+                display: block !important;
+                position: absolute !important;
+                top: 0 !important;
+                left: 0 !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                background: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
+            }
+
             #printable-receipt { 
                 visibility: visible;
-                position: fixed; 
-                left: 0; 
-                top: 0; 
-                width: 79mm; 
+                position: absolute; 
+                left: 0 !important; 
+                top: 0 !important; 
+                width: 80mm; 
                 height: auto;
-                padding: 1mm;
+                padding: 4mm;
                 background: white;
                 z-index: 99999;
-                font-family: 'Courier New', monospace; 
+                font-family: 'Courier New', Courier, monospace; 
+                font-size: 11px !important;
                 margin: 0;
+                box-sizing: border-box;
                 box-shadow: none !important;
             }
             #printable-receipt * { 
@@ -77,16 +109,16 @@ const ReceiptPrinter = ({ transaction, type = 'TAX_INVOICE' }) => {
     const handleShare = () => {
         // FORCE the Network IP for the link so it works on phones even if generated from localhost
         const PUBLIC_HOST = 'http://192.168.1.30:5173';
-        const link = `${PUBLIC_HOST}/view/${transaction.id}`;
+        const link = `${PUBLIC_HOST}/view/${transaction.id}?biz=${transaction.businessId || ''}`;
         const phone = transaction.customer?.phone || transaction.customerPhone || '';
         const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
         // Use \n for newlines, we will encode it later
-        const message = `*THE CLASSIC CONFECTION* 🧁\n` +
+        const message = `*${bizName}* 🧁\n` +
             `Hello *${transaction.customer?.name || transaction.customerName || 'Customer'}*,\n` +
             `Here is your receipt link for Order *#${transaction.id.slice(-6).toUpperCase()}*:\n` +
             `${link}\n\n` +
-            `Please visit us again! 🙏\n` +
+            `${bizFooter} 🙏\n` +
             `(Generated: ${new Date().toLocaleTimeString()})`; // Force unique message
 
         // Properly encode the message
@@ -118,7 +150,7 @@ const ReceiptPrinter = ({ transaction, type = 'TAX_INVOICE' }) => {
                         <span>Date: {formatDate(transaction.date || transaction.createdAt)}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>Cashier: Ankit</span>
+                        <span>Cashier: {cashierName || 'Ankit'}</span>
                         <span>Time: {format(new Date(transaction.date || transaction.createdAt), 'hh:mm a')}</span>
                     </div>
                     {/* Customer Details if present (even in Quick Mode sometimes) */}
@@ -177,7 +209,7 @@ const ReceiptPrinter = ({ transaction, type = 'TAX_INVOICE' }) => {
                     )}
 
                     <div style={{ textAlign: 'center', marginTop: '10px' }}>
-                        <div>Thank you for visiting!</div>
+                        <div>{bizFooter}</div>
                         <div>Have a sweet day! 🧁</div>
                     </div>
                     <div>{SEPARATOR}</div>

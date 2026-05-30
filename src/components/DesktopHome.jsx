@@ -9,7 +9,10 @@ import TransactionForm from './TransactionForm';
 import Modal from './Modal';
 import Reports from './Reports';
 import { triggerHaptic } from '../utils/haptics';
-import { useOrderFilters } from '../features/orders/hooks/useOrderFilters';
+import { useTableSessions } from '../context/useTableSessions';
+import { useSettings } from '../context/SettingsContext';
+import TableStatusCard from './shared/TableStatusCard';
+import ConfirmDialog from './shared/ConfirmDialog';
 
 const DesktopHome = ({ setCurrentView }) => {
     const { transactions, deleteTransaction } = useTransactions();
@@ -17,6 +20,8 @@ const DesktopHome = ({ setCurrentView }) => {
     const { theme } = useTheme();
     const isDark = theme === 'dark';
     const navigate = useNavigate();
+    const { sessions } = useTableSessions();
+    const { waiterTableCount } = useSettings();
 
     // Helper for Glass Styles
     const glassCardStyle = isDark ? {
@@ -53,24 +58,14 @@ const DesktopHome = ({ setCurrentView }) => {
         return getTransactionTitle(t);
     };
 
-    // --- Live Orders Logic ---
-    const {
-        filteredOrders,
-        statusFilter,
-        setStatusFilter,
-        setSortBy
-    } = useOrderFilters(transactions);
 
-    useEffect(() => {
-        setSortBy('amount-desc');
-        setStatusFilter('pending');
-    }, [setSortBy, setStatusFilter]);
 
     // Modals State
     const [showTransactionModal, setShowTransactionModal] = useState(false);
     const [transactionType, setTransactionType] = useState('sale');
     const [showReportsModal, setShowReportsModal] = useState(false);
     const [showActivityModal, setShowActivityModal] = useState(false);
+    const [confirmDialog, setConfirmDialog] = useState(null); // null or { id, title, message }
 
     // --- AGGREGATE STATS & Recent Activity ---
     const {
@@ -79,12 +74,16 @@ const DesktopHome = ({ setCurrentView }) => {
         totalOrders, todayOrders,
         totalProfit, todayProfit,
         pendingOrders,
-        recentActivity
+        recentActivity,
+        totalCash, todayCash,
+        totalUpi, todayUpi
     } = useMemo(() => {
         const now = new Date();
 
         let tSales = 0, tExpenses = 0, tOrders = 0, tPending = 0;
         let dSales = 0, dExpenses = 0, dOrders = 0;
+        let tCash = 0, dCash = 0;
+        let tUpi = 0, dUpi = 0;
 
         const sorted = [...transactions].sort((a, b) => new Date(b.date) - new Date(a.date));
         const recent = sorted.slice(0, 50);
@@ -93,18 +92,31 @@ const DesktopHome = ({ setCurrentView }) => {
             const amount = Number(t.amount);
             const isToday = isSameDay(new Date(t.date), now);
 
-            if (t.type === 'sale' || t.type === 'order' || t.type === 'settlement') {
+            if (t.type === 'sale' || t.type === 'order' || t.type === 'settlement' || t.type === 'dine_in') {
                 // TOTAL
                 tSales += amount;
-                if (t.type === 'order') {
+                if (t.type === 'order' || t.type === 'dine_in') {
                     tOrders++;
                     if (t.status === 'pending') tPending++;
+                }
+
+                const method = String(t.payment?.method || t.payment?.type || 'cash').toLowerCase();
+                if (method === 'upi') {
+                    tUpi += amount;
+                } else {
+                    tCash += amount;
                 }
 
                 // TODAY
                 if (isToday) {
                     dSales += amount;
-                    if (t.type === 'order') dOrders++;
+                    if (t.type === 'order' || t.type === 'dine_in') dOrders++;
+
+                    if (method === 'upi') {
+                        dUpi += amount;
+                    } else {
+                        dCash += amount;
+                    }
                 }
             } else if (t.type === 'expense') {
                 // TOTAL
@@ -126,37 +138,36 @@ const DesktopHome = ({ setCurrentView }) => {
             totalOrders: tOrders, todayOrders: dOrders,
             totalProfit: tProfit, todayProfit: dProfit,
             pendingOrders: tPending,
-            recentActivity: recent
+            recentActivity: recent,
+            totalCash: tCash, todayCash: dCash,
+            totalUpi: tUpi, todayUpi: dUpi
         };
     }, [transactions]);
 
-    // --- LOW STOCK ALERT LOGIC (High Sales + Low Stock) ---
-    const lowStockAlerts = useMemo(() => {
-        // 1. Calculate sales frequency per item from last 200 transactions (for performance)
-        const itemSales = {};
-        transactions.slice(0, 200).forEach(t => {
-            if ((t.type === 'order' || t.type === 'sale') && t.status !== 'cancelled' && t.items) {
-                t.items.forEach(i => {
-                    const name = i.name;
-                    itemSales[name] = (itemSales[name] || 0) + (Number(i.qty) || 1);
-                });
+    const visibleTables = useMemo(() => {
+        let maxSessionTable = 0;
+        sessions.forEach(s => {
+            if (s.tableId && s.tableId.startsWith('T')) {
+                const num = parseInt(s.tableId.replace('T', ''), 10);
+                if (!isNaN(num) && num > maxSessionTable) maxSessionTable = num;
             }
         });
+        const requiredCount = Math.max(waiterTableCount || 6, maxSessionTable);
+        const tables = [];
+        for (let i = 1; i <= requiredCount; i++) {
+            tables.push(`T${i}`);
+        }
+        return tables;
+    }, [sessions, waiterTableCount]);
 
-        // 2. Filter Inventory: Stock < 15 AND Has Sales
-        // Only show items that are actually being sold to avoid irrelevant alerts
-        const alerts = inventoryItems.filter(i => {
-            const isLow = (Number(i.stock) || 0) < 15; // Set threshold to 15
-            const hasSales = (itemSales[i.name] || 0) > 0;
-            return isLow && hasSales;
-        });
-
-        // 3. Sort by Sales Frequency DESC
-        alerts.sort((a, b) => (itemSales[b.name] || 0) - (itemSales[a.name] || 0));
-
-        // 4. Return Top 4
-        return alerts.slice(0, 4);
-    }, [transactions, inventoryItems]);
+    const handleTableClick = (tableId) => {
+        const session = sessions.find(s => s.tableId === tableId);
+        if (session) {
+            navigate('/billing', { state: { mode: 'dine-in', sessionTableId: tableId } });
+        } else {
+            navigate('/waiter', { state: { selectedTable: tableId } });
+        }
+    };
 
 
     const handleOpenTransactionModal = (type) => {
@@ -170,9 +181,11 @@ const DesktopHome = ({ setCurrentView }) => {
 
     const handleDeleteTransaction = (e, id) => {
         e.stopPropagation();
-        if (window.confirm("Are you sure you want to delete this transaction?")) {
-            deleteTransaction(id);
-        }
+        setConfirmDialog({
+            id,
+            title: 'Delete Transaction',
+            message: 'Are you sure you want to delete this transaction? This action will permanently remove the record and adjust your sales/expense metrics.'
+        });
     };
 
     return (
@@ -226,150 +239,63 @@ const DesktopHome = ({ setCurrentView }) => {
             {/* [FIX] Changed columns to 2fr 1fr 1fr and gap to 16px to match Top Cards exactly */}
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '16px', flex: 1, minHeight: 0, paddingBottom: '80px' }}>
 
-                {/* COL 1: LIVE ORDERS & LOW STOCK */}
+                {/* COL 1: CASH & UPI BREAKDOWN & LIVE TABLES */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', height: '100%', overflowY: 'auto', paddingRight: '4px' }} className="hide-scrollbar">
 
-                    {/* A. Live Orders */}
+                    {/* A. Cash & UPI Revenue Breakdown */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <h3 style={{ margin: 0, fontSize: '1.2rem', color: glassTextStyle }}>Live Orders</h3>
-                            <div style={{ display: 'flex', gap: '16px' }}>
-                                {['pending', 'ready', 'all'].map(status => (
-                                    <div
-                                        key={status}
-                                        onClick={() => setStatusFilter(status)}
-                                        style={{
-                                            color: statusFilter === status ? '#166534' : (isDark ? '#71717a' : '#a1a1aa'),
-                                            fontWeight: statusFilter === status ? 700 : 500,
-                                            cursor: 'pointer',
-                                            textTransform: 'capitalize',
-                                            borderBottom: statusFilter === status ? '2px solid #166534' : '2px solid transparent',
-                                            paddingBottom: '2px',
-                                            fontSize: '0.9rem'
-                                        }}
-                                    >
-                                        {status}
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
+                        <h3 style={{ margin: 0, fontSize: '1.2rem', color: glassTextStyle }}>Revenue Breakdown</h3>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                            {filteredOrders.slice(0, 4).map(order => (
-                                <div
-                                    key={order.id}
-                                    onClick={() => handleOrderClick(order.id)}
-                                    style={{
-                                        ...glassCardStyle,
-                                        padding: '16px', borderRadius: '16px',
-                                        display: 'flex', flexDirection: 'column', justifyContent: 'center', // Center content since description is gone
-                                        cursor: 'pointer',
-                                        transition: 'all 0.2s',
-                                        minHeight: '100px' // Reduced height
-                                    }}
-                                    className="order-card"
-                                >
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                        <div style={{ fontWeight: 800, fontSize: '1rem', color: isDark ? 'white' : '#27272a' }}>#{order.id.slice(-6).toUpperCase()}</div>
-                                        <div style={{ fontWeight: 800, color: '#b91c1c', fontSize: '1rem' }}>+₹{order.totalValue}</div>
-                                    </div>
-                                    {/* [REMOVED] Item Description as requested */}
-
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }}>
-                                        <div style={{ fontSize: '0.85rem', color: isDark ? '#e4e4e7' : '#27272a', fontWeight: 600 }}>
-                                            {order.customer?.name || 'Walk-in'}
-                                        </div>
-                                        <div style={{ fontSize: '0.75rem', color: glassSubTextStyle }}>
-                                            {format(new Date(order.date), 'hh:mm a')}
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                            {filteredOrders.length === 0 && (
-                                <div style={{
-                                    gridColumn: '1 / -1', padding: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#fafafa',
-                                    borderRadius: '16px',
-                                    border: isDark ? '1px dashed rgba(255,255,255,0.1)' : '1px dashed #d4d4d8',
-                                    color: glassSubTextStyle
-                                }}>
-                                    No orders found
-                                </div>
-                            )}
+                            <StatsCard
+                                title="Cash Received"
+                                value={`₹${totalCash.toLocaleString()}`}
+                                subValue={`+ ₹${todayCash.toLocaleString()} Today`}
+                                icon={<IndianRupee size={16} color={isDark ? '#4ade80' : "#15803d"} />}
+                                bg={isDark ? 'rgba(74, 222, 128, 0.08)' : "linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)"}
+                                borderColor={isDark ? 'rgba(74, 222, 128, 0.15)' : "#bbf7d0"}
+                                textColor={isDark ? '#4ade80' : "#166534"}
+                                isDark={isDark}
+                                small
+                            />
+                            <StatsCard
+                                title="UPI Received"
+                                value={`₹${totalUpi.toLocaleString()}`}
+                                subValue={`+ ₹${todayUpi.toLocaleString()} Today`}
+                                icon={<Wallet size={16} color={isDark ? '#60a5fa' : "#1d4ed8"} />}
+                                bg={isDark ? 'rgba(96, 165, 250, 0.08)' : "linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%)"}
+                                borderColor={isDark ? 'rgba(96, 165, 250, 0.15)' : "#bfdbfe"}
+                                textColor={isDark ? '#60a5fa' : "#1e40af"}
+                                isDark={isDark}
+                                small
+                            />
                         </div>
                     </div>
 
-                    {/* B. Low Stock Alerts (Inventory Card Look) */}
+                    {/* B. Dedicated Live View of Tables */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
-                        <h3 style={{ margin: 0, fontSize: '1.2rem', color: glassTextStyle }}>Low Stock Alert</h3>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', flex: 1 }}>
-                            {lowStockAlerts.map(item => (
-                                <div key={item.id} style={{
-                                    ...glassCardStyle,
-                                    borderRadius: '16px',
-                                    padding: '8px', // [COMPACT] Reduced padding
-                                    display: 'flex', flexDirection: 'column', gap: '8px',
-                                    height: '100%'
-                                }}>
-                                    {/* Large Image Area */}
-                                    <div style={{
-                                        width: '100%', height: '120px', // Fixed height for consistency
-                                        backgroundColor: isDark ? 'rgba(0,0,0,0.2)' : '#f9fafb', borderRadius: '12px',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        overflow: 'hidden'
-                                    }}>
-                                        {/* Use Image logic similar to ProductGrid */}
-                                        {item.image && item.image.length > 5 ? (
-                                            <img
-                                                src={item.image}
-                                                alt={item.name}
-                                                style={{
-                                                    width: '100%', height: '100%',
-                                                    objectFit: 'contain',
-                                                    padding: '8px'
-                                                }}
-                                            />
-                                        ) : (
-                                            <span style={{ fontSize: '3.5rem' }}>
-                                                {item.image || '📦'}
-                                            </span>
-                                        )}
-                                    </div>
-
-                                    {/* Content */}
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1 }}>
-                                        <div style={{ fontSize: '0.9rem', fontWeight: 700, color: glassTextStyle, lineHeight: '1.2', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                            {item.name}
-                                        </div>
-                                        <div style={{ fontSize: '0.75rem', color: glassSubTextStyle }}>
-                                            {item.category}
-                                        </div>
-
-                                        <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '4px' }}>
-                                            <div style={{ fontWeight: 700, color: glassTextStyle, fontSize: '0.9rem' }}>₹{item.price}</div>
-                                            <div style={{
-                                                backgroundColor: '#ffe4e6', color: '#be123c',
-                                                padding: '2px 6px', borderRadius: '4px',
-                                                fontSize: '0.7rem', fontWeight: 700
-                                            }}>
-                                                Stock: {item.stock}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                            {lowStockAlerts.length === 0 && (
-                                <div style={{
-                                    gridColumn: '1 / -1', flex: 1, padding: '24px', borderRadius: '16px',
-                                    backgroundColor: isDark ? 'rgba(74, 222, 128, 0.1)' : '#f0fdf4',
-                                    border: isDark ? '1px dashed rgba(74, 222, 128, 0.2)' : '1px dashed #bbf7d0',
-                                    color: isDark ? '#4ade80' : '#166534',
-                                    fontSize: '0.9rem', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px'
-                                }}>
-                                    <CheckCircle size={32} />
-                                    <span>Inventory is healthy!</span>
-                                </div>
-                            )}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h3 style={{ margin: 0, fontSize: '1.2rem', color: glassTextStyle }}>Live Table View</h3>
+                            <div style={{ fontSize: '0.85rem', color: glassSubTextStyle, fontWeight: 500 }}>
+                                {sessions.filter(s => s.status && s.status !== 'Available').length} Occupied
+                            </div>
+                        </div>
+                        <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
+                            gap: '16px',
+                            flex: 1
+                        }}>
+                            {visibleTables.map(tableId => {
+                                const session = sessions.find(s => s.tableId === tableId) || { tableId, status: 'Available', kots: [] };
+                                return (
+                                    <TableStatusCard
+                                        key={tableId}
+                                        session={session}
+                                        onClick={() => handleTableClick(tableId)}
+                                        isDark={isDark}
+                                    />
+                                );
+                            })}
                         </div>
                     </div>
 
@@ -582,6 +508,22 @@ const DesktopHome = ({ setCurrentView }) => {
                 </div>
             </Modal>
 
+            <ConfirmDialog 
+                isOpen={!!confirmDialog}
+                onClose={() => setConfirmDialog(null)}
+                onConfirm={() => {
+                    if (confirmDialog?.id) {
+                        deleteTransaction(confirmDialog.id);
+                    }
+                    setConfirmDialog(null);
+                }}
+                title={confirmDialog?.title || ''}
+                message={confirmDialog?.message || ''}
+                confirmText="Delete"
+                cancelText="Cancel"
+                type="danger"
+            />
+
             <style>{`
                 .order-card:hover { transform: translateY(-3px); box-shadow: 0 8px 12px -3px rgba(0, 0, 0, 0.05); border-color: #d4d4d8; }
                 .hide-scrollbar::-webkit-scrollbar { display: none; }
@@ -591,22 +533,23 @@ const DesktopHome = ({ setCurrentView }) => {
     );
 };
 
-const StatsCard = ({ title, value, subValue, icon, bg, borderColor, textColor, isDark }) => (
+const StatsCard = ({ title, value, subValue, icon, bg, borderColor, textColor, isDark, small }) => (
     <div style={{
-        padding: '24px', borderRadius: '16px', background: bg,
+        padding: small ? '16px 20px' : '24px', borderRadius: '16px', background: bg,
         border: `1px solid ${borderColor}`,
-        display: 'flex', flexDirection: 'column', gap: '8px',
+        display: 'flex', flexDirection: 'column', gap: small ? '4px' : '8px',
         backdropFilter: isDark ? 'blur(12px)' : 'none',
-        boxShadow: isDark ? '0 4px 6px -1px rgba(0, 0, 0, 0.2)' : 'none'
+        boxShadow: isDark ? '0 4px 6px -1px rgba(0, 0, 0, 0.2)' : 'none',
+        flex: 1
     }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: textColor, opacity: 1 }}>
             {icon}
-            <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>{title}</span>
+            <span style={{ fontSize: small ? '0.82rem' : '0.9rem', fontWeight: 600 }}>{title}</span>
         </div>
-        <div style={{ fontSize: '2rem', fontWeight: 800, color: isDark ? 'white' : '#3f3f46' }}>
+        <div style={{ fontSize: small ? '1.5rem' : '2rem', fontWeight: 800, color: isDark ? 'white' : '#3f3f46' }}>
             {value}
         </div>
-        <div style={{ fontSize: '0.85rem', color: textColor, fontWeight: 500 }}>
+        <div style={{ fontSize: '0.82rem', color: textColor, fontWeight: 500 }}>
             {subValue}
         </div>
     </div>

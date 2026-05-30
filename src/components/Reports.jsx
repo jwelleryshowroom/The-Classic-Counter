@@ -217,7 +217,7 @@ const Reports = ({ setCurrentView, isModal, onClose }) => {
     const itemSalesData = useMemo(() => {
         const items = {};
         reportData.forEach(tx => {
-            if (tx.type === 'sale' || tx.type === 'order') {
+            if (tx.type === 'sale' || tx.type === 'order' || tx.type === 'dine_in') {
                 if (tx.items && Array.isArray(tx.items)) {
                     tx.items.forEach(item => {
                         const id = item.id || item.name; // Fallback
@@ -561,11 +561,11 @@ const Reports = ({ setCurrentView, isModal, onClose }) => {
                     padding: '16px 0', borderBottom: isDark ? '1px solid #27272a' : '1px solid #f4f4f5', marginBottom: '0' // [COMPACT] Reduced padding
                 }}>
                     {[
-                        { label: 'Total Sales 🧁', value: reportData.reduce((acc, curr) => acc + ((curr.type === 'sale' || curr.type === 'order' || curr.type === 'settlement') ? curr.amount : 0), 0), color: '#166534' },
+                        { label: 'Total Sales 🧁', value: reportData.reduce((acc, curr) => acc + ((curr.type === 'sale' || curr.type === 'order' || curr.type === 'settlement' || curr.type === 'dine_in') ? curr.amount : 0), 0), color: '#166534' },
                         { label: 'Total Expense 💸', value: reportData.reduce((acc, curr) => acc + (curr.type === 'expense' ? curr.amount : 0), 0), color: '#ef4444' },
                         {
                             label: 'Net Profit 💼', value: reportData.reduce((acc, curr) => {
-                                if (curr.type === 'sale' || curr.type === 'order' || curr.type === 'settlement') return acc + curr.amount;
+                                if (curr.type === 'sale' || curr.type === 'order' || curr.type === 'settlement' || curr.type === 'dine_in') return acc + curr.amount;
                                 if (curr.type === 'expense') return acc - curr.amount;
                                 return acc;
                             }, 0), color: isDark ? 'white' : '#18181b'

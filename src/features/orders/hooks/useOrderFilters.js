@@ -27,7 +27,7 @@ export const useOrderFilters = (transactions) => {
         const idTerm = term.replace(/^#/, '');
 
         const filtered = transactions
-            .filter(t => t.type === 'order' || t.type === 'sale')
+            .filter(t => t.type === 'order' || t.type === 'sale' || t.type === 'dine_in')
             // Status Filter
             .filter(t => {
                 if (statusFilter === 'all') return true;

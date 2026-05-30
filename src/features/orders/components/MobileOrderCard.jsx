@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { format, differenceInMinutes } from 'date-fns';
-import { CheckCircle, Clock, Printer } from 'lucide-react';
+import { CheckCircle, Clock, Printer, Utensils } from 'lucide-react';
 import { triggerHaptic } from '../../../utils/haptics';
 import StatusBadge from './StatusBadge';
 
@@ -66,13 +66,13 @@ const MobileOrderCard = ({ order, onPrint, onShare, onDeliver, onMarkReady, isHi
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
                 <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--color-text-primary)' }}>
-                            #{id.slice(-6).toUpperCase()}
+                        <span style={{ fontWeight: 800, fontSize: '1.2rem', color: 'var(--color-text-primary)' }}>
+                            ₹{order.totalValue || 0}
                         </span>
                         {isUrgent && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--color-danger)', boxShadow: '0 0 8px var(--color-danger)' }}></span>}
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
-                        {format(new Date(date), 'hh:mm a')} • {format(new Date(date), 'dd MMM')}
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '2px', fontWeight: 600 }}>
+                        #{id.slice(-6).toUpperCase()} • {format(new Date(date), 'hh:mm a')}
                     </div>
                 </div>
                 <StatusBadge
@@ -105,6 +105,10 @@ const MobileOrderCard = ({ order, onPrint, onShare, onDeliver, onMarkReady, isHi
                                 <Clock size={14} color="var(--color-primary)" />
                                 <span>{delivery.time ? format(new Date(`2000-01-01T${delivery.time}`), 'hh:mm a') : format(new Date(delivery.date), 'dd MMM')}</span>
                             </>
+                        ) : order.type === 'dine_in' ? (
+                            <span style={{ color: '#E91E63', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <Utensils size={14} /> Dine-In
+                            </span>
                         ) : (
                             <span style={{ color: 'var(--color-success)', fontSize: '0.9rem' }}>Instant</span>
                         )}

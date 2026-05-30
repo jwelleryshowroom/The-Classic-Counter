@@ -19,9 +19,9 @@ export default defineConfig({
         },
       },
       manifest: {
-        name: 'The Classic Confection',
+        name: 'The Classic Counter',
         short_name: 'TCC',
-        description: 'Daily expense and sales tracker for The Classic Confection bakery.',
+        description: 'Daily expense and sales tracker for The Classic Counter.',
         start_url: '/',
         display: 'standalone',
         background_color: '#FDFBF7',

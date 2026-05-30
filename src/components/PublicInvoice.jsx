@@ -14,10 +14,49 @@ const PublicInvoice = () => {
         const fetchTransaction = async () => {
             try {
                 if (!orderId) throw new Error('No order ID provided');
-                const docRef = doc(db, 'transactions', orderId);
-                const docSnap = await getDoc(docRef);
+                const queryParams = new URLSearchParams(window.location.search);
+                const bizId = queryParams.get('biz');
+                
+                let docSnap = null;
+                
+                // 1. Try direct fetch if biz query param is present
+                if (bizId) {
+                    const docRef = doc(db, 'businesses', bizId, 'transactions', orderId);
+                    const snap = await getDoc(docRef);
+                    if (snap.exists()) {
+                        docSnap = snap;
+                    }
+                }
+                
+                // 2. Try the default/fallback business if direct fetch yields nothing
+                const defaultBizId = 'biz_tc6b61d1';
+                if (!docSnap && bizId !== defaultBizId) {
+                    const docRef = doc(db, 'businesses', defaultBizId, 'transactions', orderId);
+                    const snap = await getDoc(docRef);
+                    if (snap.exists()) {
+                        docSnap = snap;
+                    }
+                }
 
-                if (docSnap.exists()) {
+                // 3. Try checking other known business IDs in parallel
+                if (!docSnap) {
+                    const knownBizIds = ['biz_4275ajbo', 'biz_diw2iez2', 'biz_l4maa0k3', 'biz_tc6b61d1'];
+                    const promises = knownBizIds
+                        .filter(id => id !== bizId && id !== defaultBizId)
+                        .map(async (id) => {
+                            try {
+                                const ref = doc(db, 'businesses', id, 'transactions', orderId);
+                                const snap = await getDoc(ref);
+                                return snap.exists() ? snap : null;
+                            } catch (e) {
+                                return null;
+                            }
+                        });
+                    const results = await Promise.all(promises);
+                    docSnap = results.find(snap => snap !== null) || null;
+                }
+
+                if (docSnap && docSnap.exists()) {
                     setTransaction({ id: docSnap.id, ...docSnap.data() });
                 } else {
                     setError('Invoice not found.');
@@ -36,7 +75,7 @@ const PublicInvoice = () => {
         if (navigator.share) {
             try {
                 await navigator.share({
-                    title: 'Classic Confection Invoice',
+                    title: 'Classic Counter Invoice',
                     text: `Invoice #${transaction?.id?.slice(-6).toUpperCase()}`,
                     url: window.location.href,
                 });
@@ -245,7 +284,7 @@ const PublicInvoice = () => {
 
             <div className="receipt-card">
                 <div className="receipt-content">
-                    <div className="store-name">The Classic Confection</div>
+                    <div className="store-name">The Classic Counter</div>
                     {/* ... (address remains same) ... */}
                     <div className="store-address">
                         Mahavir Marg, opp. Hotel Shyam Palace<br />
@@ -353,7 +392,7 @@ const PublicInvoice = () => {
                     </div>
 
                     <div style={{ marginTop: '1.5rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: '600', color: '#374151' }}>
-                        The Classic Confection
+                        The Classic Counter
                         <div style={{ fontWeight: '500', color: '#9ca3af', fontSize: '0.65rem', marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                             {isBooking ? (
                                 <>

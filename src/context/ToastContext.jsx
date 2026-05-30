@@ -74,7 +74,7 @@ export const ToastProvider = ({ children }) => {
                 top: '20px',
                 left: '50%',
                 transform: 'translateX(-50%)',
-                zIndex: 10000,
+                zIndex: 99999,
                 pointerEvents: 'none'
             }}>
                 <AnimatePresence mode="wait">

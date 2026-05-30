@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Receipt, ShoppingBag, UtensilsCrossed } from 'lucide-react';
+import { LayoutDashboard, Receipt, ShoppingBag, UtensilsCrossed, ChefHat, Wallet, BellRing } from 'lucide-react';
 import { triggerHaptic } from '../utils/haptics';
 import { useSettings } from '../context/SettingsContext';
 import { useTheme } from '../context/useTheme';
@@ -40,7 +40,9 @@ const BottomNav = () => {
     const navItems = [
         { path: '/', icon: LayoutDashboard, emoji: '🏠', label: 'Home' },
         { path: '/billing', icon: Receipt, emoji: '🧾', label: 'Billing' },
-        { path: '/orders', icon: ShoppingBag, emoji: '🛍️', label: 'Orders' },
+        { path: '/waiter', icon: BellRing, emoji: '🛎️', label: 'Waiter' },
+        { path: '/kitchen', icon: ChefHat, emoji: '👨‍🍳', label: 'Kitchen' },
+        { path: '/orders', icon: ShoppingBag, emoji: '🛍️', label: 'History' },
         { path: '/inventory', icon: UtensilsCrossed, emoji: '🍔', label: 'Menu' }
     ];
 
