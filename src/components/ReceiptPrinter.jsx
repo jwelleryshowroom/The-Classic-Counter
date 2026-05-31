@@ -137,6 +137,12 @@ const ReceiptPrinter = ({ transaction, type = 'TAX_INVOICE' }) => {
 
     // Render Content Logic
     const renderContent = () => {
+        const rawTotal = Number(transaction.totalValue || transaction.amount || 0);
+        const grandTotal = Math.round(rawTotal);
+        const roundOff = grandTotal - rawTotal;
+        const advance = Number(transaction.payment?.advance || transaction.advancePaid || 0);
+        const balanceDue = isBooking ? Math.max(0, grandTotal - advance) : Number(transaction.payment?.balance || transaction.balanceDue || 0);
+
         if (!isBooking) {
             // 1. QUICK MODE (INVOICE)
             return (
@@ -185,9 +191,23 @@ const ReceiptPrinter = ({ transaction, type = 'TAX_INVOICE' }) => {
                     <div>Total Qty: {(transaction.items || []).reduce((acc, i) => acc + (i.qty || i.quantity || 0), 0)}</div>
                     <div>{SEPARATOR}</div>
 
+                    {Math.abs(roundOff) >= 0.01 && (
+                        <>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span>Subtotal:</span>
+                                <span>{formatCurrency(rawTotal)}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span>Round Off:</span>
+                                <span>{roundOff > 0 ? '+' : ''}{formatCurrency(roundOff)}</span>
+                            </div>
+                            <div>{SEPARATOR}</div>
+                        </>
+                    )}
+
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', fontWeight: 'bold' }}>
                         <span>GRAND TOTAL:</span>
-                        <span>{formatCurrency(transaction.totalValue || transaction.amount)}</span>
+                        <span>{formatCurrency(grandTotal)}</span>
                     </div>
 
                     <div>{SEPARATOR}</div>
@@ -280,21 +300,34 @@ const ReceiptPrinter = ({ transaction, type = 'TAX_INVOICE' }) => {
                     )}
 
                     <div>{SEPARATOR}</div>
+                    {Math.abs(roundOff) >= 0.01 && (
+                        <>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span>Subtotal:</span>
+                                <span>₹ {formatCurrency(rawTotal)}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span>Round Off:</span>
+                                <span>{roundOff > 0 ? '+' : ''}{formatCurrency(roundOff)}</span>
+                            </div>
+                            <div>{SEPARATOR}</div>
+                        </>
+                    )}
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span>Total Amount:</span>
-                        <span style={{ fontWeight: 'bold' }}>₹ {formatCurrency(transaction.totalValue || transaction.amount)}</span>
+                        <span style={{ fontWeight: 'bold' }}>₹ {formatCurrency(grandTotal)}</span>
                     </div>
                     {!transaction.payment?.balanceMethod && (
                         <>
                             <div>{SEPARATOR}</div>
                             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                 <span>ADVANCE PAID:</span>
-                                <span>₹ {formatCurrency(transaction.payment?.advance || transaction.advancePaid || 0)}</span>
+                                <span>₹ {formatCurrency(advance)}</span>
                             </div>
                             <div>{SEPARATOR}</div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', fontWeight: 'bold' }}>
                                 <span>⚠️ BALANCE DUE:</span>
-                                <span>₹ {formatCurrency(transaction.payment?.balance || transaction.balanceDue || 0)}</span>
+                                <span>₹ {formatCurrency(balanceDue)}</span>
                             </div>
                         </>
                     )}

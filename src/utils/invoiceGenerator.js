@@ -90,17 +90,38 @@ export const generateInvoicePDF = (transaction) => {
     // Right align totals
     const rightMargin = 175; // Align with Amount column roughly
     
-    doc.text(`Total Amount:`, 130, finalY);
-    doc.text(`${formatCurrency(transaction.totalValue || transaction.amount)}`, 196, finalY, { align: 'right' });
+    const rawTotal = Number(transaction.totalValue || transaction.amount || 0);
+    const grandTotal = Math.round(rawTotal);
+    const roundOff = grandTotal - rawTotal;
+    const advance = Number(transaction.payment?.advance || transaction.advancePaid || 0);
+    const balanceDue = isBooking ? Math.max(0, grandTotal - advance) : Number(transaction.payment?.balance || transaction.balanceDue || 0);
 
-    if (transaction.payment?.advance > 0) {
-        doc.text(`Advance Paid:`, 130, finalY + 6);
-        doc.text(`${formatCurrency(transaction.payment.advance)}`, 196, finalY + 6, { align: 'right' });
+    let currentY = finalY;
+    if (Math.abs(roundOff) >= 0.01) {
+        doc.text(`Subtotal:`, 130, currentY);
+        doc.text(`${formatCurrency(rawTotal)}`, 196, currentY, { align: 'right' });
+        currentY += 6;
+
+        doc.text(`Round Off:`, 130, currentY);
+        doc.text(`${roundOff > 0 ? '+' : ''}${formatCurrency(roundOff)}`, 196, currentY, { align: 'right' });
+        currentY += 6;
     }
 
     doc.setFont('helvetica', 'bold');
-    doc.text(`Balance Due:`, 130, finalY + 12);
-    doc.text(`${formatCurrency(transaction.payment?.balance || 0)}`, 196, finalY + 12, { align: 'right' });
+    doc.text(`Total Amount:`, 130, currentY);
+    doc.text(`${formatCurrency(grandTotal)}`, 196, currentY, { align: 'right' });
+    currentY += 6;
+
+    doc.setFont('helvetica', 'normal');
+    if (advance > 0) {
+        doc.text(`Advance Paid:`, 130, currentY);
+        doc.text(`${formatCurrency(advance)}`, 196, currentY, { align: 'right' });
+        currentY += 6;
+    }
+
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Balance Due:`, 130, currentY);
+    doc.text(`${formatCurrency(balanceDue)}`, 196, currentY, { align: 'right' });
 
     // --- Footer Notes ---
     doc.setFont('helvetica', 'italic');

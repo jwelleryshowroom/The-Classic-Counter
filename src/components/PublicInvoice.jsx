@@ -105,11 +105,13 @@ const PublicInvoice = () => {
 
     const formatDate = (date) => new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
     const formatCurrency = (amount) => Number(amount).toFixed(2);
-    const subtotal = transaction.totalValue || transaction.amount || 0;
-    const tax = 0;
-    const grandTotal = subtotal;
+    const rawTotal = Number(transaction.totalValue || transaction.amount || 0);
+    const subtotal = rawTotal;
+    const grandTotal = Math.round(rawTotal);
+    const roundOff = grandTotal - rawTotal;
     const advance = Number(transaction.payment?.advance || transaction.advancePaid || 0);
     const balance = Number(transaction.payment?.balance || transaction.balanceDue || 0);
+    const resolvedBalance = (transaction.type === 'order' || balance > 0) ? Math.max(0, grandTotal - advance) : balance;
     const isOrderMode = transaction.type === 'order' || balance > 0;
     // status might be 'pending', 'preparing', 'ready' for bookings. 'delivered' or 'completed' for final.
     // Quick sales (type='sale') are always final.
@@ -342,10 +344,18 @@ const PublicInvoice = () => {
                     )}
 
                     <div className="totals">
-                        <div className="total-row">
-                            <span>Subtotal</span>
-                            <span>₹{formatCurrency(subtotal)}</span>
-                        </div>
+                        {Math.abs(roundOff) >= 0.01 && (
+                            <div className="total-row">
+                                <span>Subtotal</span>
+                                <span>₹{formatCurrency(subtotal)}</span>
+                            </div>
+                        )}
+                        {Math.abs(roundOff) >= 0.01 && (
+                            <div className="total-row">
+                                <span>Round Off</span>
+                                <span>{roundOff > 0 ? '+' : ''}₹{formatCurrency(roundOff)}</span>
+                            </div>
+                        )}
                         {transaction.delivery && isBooking && (
                             <div className="total-row">
                                 <span>Delivery Due</span>
@@ -385,7 +395,7 @@ const PublicInvoice = () => {
                                 </div>
                                 <div className="total-row">
                                     <span style={{ color: '#dc2626', fontWeight: 700 }}>Balance Due</span>
-                                    <span style={{ color: '#dc2626', fontWeight: 700 }}>₹{formatCurrency(balance)}</span>
+                                    <span style={{ color: '#dc2626', fontWeight: 700 }}>₹{formatCurrency(resolvedBalance)}</span>
                                 </div>
                             </>
                         )}
